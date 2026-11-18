@@ -19,6 +19,7 @@ data class LyricResult(
 // Every source implements this. Adding a source = adding one new object.
 interface LyricsSource {
     val name: String
+    val needsKey: Boolean get() = false
     fun search(query: String): List<LyricResult>
 }
 
