@@ -2,89 +2,164 @@ package com.erato.lyrics
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Card
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 
-// Stored privately on the phone. Never in the code or on GitHub.
+enum class ThemeMode(val title: String) {
+    SYSTEM("Follow system"),
+    LIGHT("Light"),
+    DARK("Dark"),
+    AMOLED("AMOLED black")
+}
+
 object Settings {
     private lateinit var prefs: SharedPreferences
 
-    fun init(ctx: Context) {
-        prefs = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
+    fun init(context: Context) {
+        prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
     }
 
-    fun getKey(source: String): String = prefs.getString("key_$source", "") ?: ""
-    fun setKey(source: String, value: String) =
-        prefs.edit().putString("key_$source", value.trim()).apply()
+    fun isEnabled(source: String): Boolean {
+        return prefs.getBoolean("enabled_$source", source == "LRCLIB")
+    }
 
-    fun isEnabled(source: String): Boolean = prefs.getBoolean("enabled_$source", true)
-    fun setEnabled(source: String, value: Boolean) =
-        prefs.edit().putBoolean("enabled_$source", value).apply()
-}
+    fun setEnabled(source: String, enabled: Boolean) {
+        prefs.edit().putBoolean("enabled_$source", enabled).apply()
+    }
 
-@Composable
-fun SettingsScreen(onBack: () -> Unit) {
-    Column(Modifier.fillMaxSize().statusBarsPadding().padding(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("← Back") }
-            Text("Settings", style = MaterialTheme.typography.headlineMedium)
-        }
-        Spacer(Modifier.height(8.dp))
-        Text("Sources", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(8.dp))
+    fun themeMode(): ThemeMode {
+        val saved = prefs.getString("theme_mode", ThemeMode.SYSTEM.name)
+        return runCatching { ThemeMode.valueOf(saved!!) }
+            .getOrDefault(ThemeMode.SYSTEM)
+    }
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(allSources) { src -> SourceCard(src) }
-        }
+    fun setThemeMode(mode: ThemeMode) {
+        prefs.edit().putString("theme_mode", mode.name).apply()
     }
 }
 
 @Composable
-fun SourceCard(src: LyricsSource) {
-    var enabled by remember { mutableStateOf(Settings.isEnabled(src.name)) }
-    var key by remember { mutableStateOf(Settings.getKey(src.name)) }
-    var showKey by remember { mutableStateOf(false) }
+fun AppearanceSettings(
+    selected: ThemeMode,
+    onSelected: (ThemeMode) -> Unit
+) {
+    Text(
+        text = "Appearance",
+        style = MaterialTheme.typography.titleLarge
+    )
+
+    Spacer(Modifier.height(8.dp))
 
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(src.name, style = MaterialTheme.typography.titleMedium)
+        Column(Modifier.padding(vertical = 4.dp)) {
+            ThemeMode.entries.forEach { mode ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = selected == mode,
+                        onClick = { onSelected(mode) }
+                    )
+
                     Text(
-                        if (src.needsKey) "Requires API key" else "No key needed",
-                        style = MaterialTheme.typography.bodySmall
+                        text = mode.title,
+                        modifier = Modifier.padding(start = 8.dp)
                     )
                 }
-                Switch(
-                    checked = enabled,
-                    onCheckedChange = { enabled = it; Settings.setEnabled(src.name, it) }
-                )
             }
-            if (src.needsKey) {
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = key,
-                    onValueChange = { key = it; Settings.setKey(src.name, it) },
-                    label = { Text("API key") },
-                    singleLine = true,
-                    visualTransformation =
-                        if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon = {
-                        TextButton(onClick = { showKey = !showKey }) {
-                            Text(if (showKey) "Hide" else "Show")
-                        }
+        }
+    }
+}
+
+@Composable
+fun SourcesSettings() {
+    Text(
+        text = "Lyrics services",
+        style = MaterialTheme.typography.titleLarge
+    )
+
+    Text(
+        text = "Choose which services Erato can search. More providers will become functional in later versions.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+
+    Spacer(Modifier.height(12.dp))
+
+    LazyColumn(
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(allSources, key = { it.name }) { source ->
+            SourceCard(source)
+        }
+    }
+}
+
+@Composable
+private fun SourceCard(source: LyricsSource) {
+    var enabled by remember(source.name) {
+        mutableStateOf(Settings.isEnabled(source.name))
+    }
+
+    Card(Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = source.name,
+                    style = MaterialTheme.typography.titleMedium
+                )
+
+                Text(
+                    text = if (source.available) {
+                        "Available • No API key"
+                    } else {
+                        "Coming soon • Free source"
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (source.available) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
                 )
             }
+
+            Switch(
+                checked = enabled && source.available,
+                enabled = source.available,
+                onCheckedChange = {
+                    enabled = it
+                    Settings.setEnabled(source.name, it)
+                }
+            )
         }
     }
 }
