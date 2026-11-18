@@ -614,4 +614,88 @@ private fun LibraryScreen(padding: PaddingValues) {
             Icon(
                 imageVector = Icons.Default.Folder,
                 contentDescription = null,
- 
+                tint = MaterialTheme.colorScheme.primary
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            Text(
+                text = "Music library",
+                style = MaterialTheme.typography.headlineSmall
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                text = "Folder selection and local music scanning are coming in v0.3.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsPage(
+    padding: PaddingValues,
+    themeMode: ThemeMode,
+    onThemeChanged: (ThemeMode) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding)
+            .statusBarsPadding()
+            .padding(horizontal = 16.dp)
+    ) {
+        Spacer(Modifier.height(12.dp))
+
+        Text(
+            text = "Settings",
+            style = MaterialTheme.typography.headlineLarge
+        )
+
+        Spacer(Modifier.height(20.dp))
+
+        AppearanceSettings(
+            selected = themeMode,
+            onSelected = onThemeChanged
+        )
+
+        Spacer(Modifier.height(24.dp))
+
+        SourcesSettings()
+    }
+}
+
+fun saveLrc(
+    context: Context,
+    name: String,
+    content: String
+) {
+    val safeName = name.replace(
+        Regex("[\\\\/:*?\"<>|]"),
+        "_"
+    )
+
+    val values = ContentValues().apply {
+        put(MediaStore.Downloads.DISPLAY_NAME, "$safeName.lrc")
+        put(
+            MediaStore.Downloads.MIME_TYPE,
+            "application/octet-stream"
+        )
+        put(
+            MediaStore.Downloads.RELATIVE_PATH,
+            "${Environment.DIRECTORY_DOWNLOADS}/Lyrics"
+        )
+    }
+
+    val uri = context.contentResolver.insert(
+        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+        values
+    ) ?: throw Exception("Could not create the file")
+
+    context.contentResolver.openOutputStream(uri)?.use {
+        it.write(content.toByteArray())
+    } ?: throw Exception("Could not write the file")
+}
