@@ -8,6 +8,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -17,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -27,6 +29,7 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Settings.init(this)
         setContent {
             val ctx = LocalContext.current
             val dark = isSystemInDarkTheme()
@@ -36,7 +39,15 @@ class MainActivity : ComponentActivity() {
                 if (dark) darkColorScheme() else lightColorScheme()
             }
             MaterialTheme(colorScheme = colors) {
-                Surface(Modifier.fillMaxSize()) { App() }
+                Surface(Modifier.fillMaxSize()) {
+                    var showSettings by remember { mutableStateOf(false) }
+                    if (showSettings) {
+                        BackHandler { showSettings = false }
+                        SettingsScreen(onBack = { showSettings = false })
+                    } else {
+                        SearchScreen(onOpenSettings = { showSettings = true })
+                    }
+                }
             }
         }
     }
@@ -56,7 +67,7 @@ fun saveLrc(ctx: Context, name: String, content: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun App() {
+fun SearchScreen(onOpenSettings: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
@@ -66,7 +77,10 @@ fun App() {
     var selected by remember { mutableStateOf<LyricResult?>(null) }
 
     Column(Modifier.fillMaxSize().statusBarsPadding().padding(16.dp)) {
-        Text("Lyrics", style = MaterialTheme.typography.headlineMedium)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Lyrics", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+            TextButton(onClick = onOpenSettings) { Text("Settings") }
+        }
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(
             value = query,
@@ -80,15 +94,16 @@ fun App() {
             onClick = {
                 scope.launch {
                     loading = true; error = null
-                    try {
+                    val active = allSources.filter { Settings.isEnabled(it.name) }
+                    if (active.isEmpty()) {
+                        error = "All sources are turned off in Settings"
+                    } else {
                         results = withContext(Dispatchers.IO) {
-                            allSources.flatMap { src ->
+                            active.flatMap { src ->
                                 try { src.search(query) } catch (e: Exception) { emptyList() }
                             }
                         }
                         if (results.isEmpty()) error = "No results"
-                    } catch (e: Exception) {
-                        error = e.message
                     }
                     loading = false
                 }
