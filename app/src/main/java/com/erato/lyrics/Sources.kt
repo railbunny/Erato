@@ -16,42 +16,81 @@ data class LyricResult(
     val source: String
 )
 
-// Every source implements this. Adding a source = adding one new object.
 interface LyricsSource {
     val name: String
+    val available: Boolean
     val needsKey: Boolean get() = false
     fun search(query: String): List<LyricResult>
 }
 
-private fun JSONObject.str(key: String): String? =
-    if (isNull(key)) null else optString(key).takeIf { it.isNotBlank() }
+private fun JSONObject.stringOrNull(key: String): String? {
+    return if (isNull(key)) null
+    else optString(key).takeIf { it.isNotBlank() }
+}
 
 fun httpGet(url: String): String {
-    val c = URL(url).openConnection() as HttpsURLConnection
-    c.setRequestProperty("User-Agent", "LyricsApp/0.1")
-    c.connectTimeout = 15000
-    c.readTimeout = 15000
-    return c.inputStream.bufferedReader().use { it.readText() }
+    val connection = URL(url).openConnection() as HttpsURLConnection
+    connection.setRequestProperty("User-Agent", "Erato/0.2")
+    connection.connectTimeout = 15_000
+    connection.readTimeout = 15_000
+
+    return try {
+        val status = connection.responseCode
+        if (status !in 200..299) {
+            throw Exception("Server returned HTTP $status")
+        }
+
+        connection.inputStream.bufferedReader().use { it.readText() }
+    } finally {
+        connection.disconnect()
+    }
 }
 
 object LrcLib : LyricsSource {
     override val name = "LRCLIB"
+    override val available = true
+
     override fun search(query: String): List<LyricResult> {
-        val text = httpGet("https://lrclib.net/api/search?q=" + URLEncoder.encode(query, "UTF-8"))
-        val arr = JSONArray(text)
-        return (0 until arr.length()).map { i ->
-            val o = arr.getJSONObject(i)
+        val encoded = URLEncoder.encode(query, "UTF-8")
+        val response = httpGet("https://lrclib.net/api/search?q=$encoded")
+        val array = JSONArray(response)
+
+        return (0 until array.length()).map { index ->
+            val item = array.getJSONObject(index)
+
             LyricResult(
-                track = o.str("trackName") ?: "Unknown",
-                artist = o.str("artistName") ?: "Unknown",
-                album = o.str("albumName") ?: "",
-                duration = o.optDouble("duration", 0.0),
-                synced = o.str("syncedLyrics"),
-                plain = o.str("plainLyrics"),
+                track = item.stringOrNull("trackName") ?: "Unknown title",
+                artist = item.stringOrNull("artistName") ?: "Unknown artist",
+                album = item.stringOrNull("albumName") ?: "",
+                duration = item.optDouble("duration", 0.0),
+                synced = item.stringOrNull("syncedLyrics"),
+                plain = item.stringOrNull("plainLyrics"),
                 source = name
             )
         }
     }
 }
 
-val allSources: List<LyricsSource> = listOf(LrcLib)
+class PlannedSource(
+    override val name: String
+) : LyricsSource {
+    override val available = false
+
+    override fun search(query: String): List<LyricResult> = emptyList()
+}
+
+val allSources: List<LyricsSource> = listOf(
+    LrcLib,
+    PlannedSource("lrc.red"),
+    PlannedSource("NetEase"),
+    PlannedSource("KuGou"),
+    PlannedSource("BetterLyrics"),
+    PlannedSource("BetterLyrics (QQ)"),
+    PlannedSource("BiniLyrics"),
+    PlannedSource("Unison"),
+    PlannedSource("AMLL"),
+    PlannedSource("Lyricify"),
+    PlannedSource("SimpMusic"),
+    PlannedSource("PaxSenix"),
+    PlannedSource("LyricsPlus")
+)
